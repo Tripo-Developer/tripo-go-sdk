@@ -171,6 +171,9 @@ type TaskOutput struct {
 	// it with the reference image they synthesised internally.
 	GeneratedImageURL string `json:"generated_image_url,omitempty"`
 
+	// UVRenderURL is the UV layout preview image produced by Client.MeshUV.
+	UVRenderURL string `json:"uv_render_url,omitempty"`
+
 	Riggable *bool  `json:"riggable,omitempty"`
 	RigType  string `json:"rig_type,omitempty"`
 

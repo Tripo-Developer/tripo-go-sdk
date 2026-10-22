@@ -141,3 +141,34 @@ func (c *Client) DecimateMesh(ctx context.Context, params DecimateMeshParams) (s
 	}
 	return c.createTask(ctx, "/mesh/decimate", body)
 }
+
+// MeshUVParams are the parameters for POST /v3/mesh/uv.
+//
+// The input model must not exceed 80,000 equivalent triangles (a quad
+// counts as two). Larger models are accepted at creation time but the task
+// then fails and refunds its credits, so reduce the face count first, e.g.
+// with Client.DecimateMesh.
+type MeshUVParams struct {
+	Input             string  `json:"input"`
+	Model             *string `json:"model,omitempty"`
+	Bake              *bool   `json:"bake,omitempty"`
+	ExportOrientation *string `json:"export_orientation,omitempty"`
+	Compress          *string `json:"compress,omitempty"`
+
+	Extra map[string]interface{} `json:"-"`
+}
+
+// MeshUV calls POST /v3/mesh/uv (re-unwrap UVs, remapping the existing
+// textures, skeleton and animations onto the new layout) and returns the
+// resulting task_id. Besides the model, the finished task carries a UV
+// layout preview in TaskOutput.UVRenderURL.
+func (c *Client) MeshUV(ctx context.Context, params MeshUVParams) (string, error) {
+	if strings.TrimSpace(params.Input) == "" {
+		return "", errors.New("tripo3d: MeshUV: Input is required")
+	}
+	body, err := buildPayload(params, params.Extra)
+	if err != nil {
+		return "", err
+	}
+	return c.createTask(ctx, "/mesh/uv", body)
+}

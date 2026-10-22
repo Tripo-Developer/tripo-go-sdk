@@ -509,6 +509,60 @@ func TestRetargetAnimationRejectsMoreThanFiveAnimations(t *testing.T) {
 	}
 }
 
+func TestMeshUVPostsPayloadAndExposesUVRender(t *testing.T) {
+	_, client := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/mesh/uv":
+			body := readJSONBody(t, r)
+			want := map[string]interface{}{
+				"input":              "file_abc",
+				"bake":               false,
+				"export_orientation": ExportOrientationPlusY,
+				"compress":           "geometry",
+			}
+			if fmt.Sprint(body) != fmt.Sprint(want) {
+				t.Fatalf("unexpected body: %v", body)
+			}
+			writeJSON(w, 200, map[string]interface{}{"code": 0, "data": map[string]string{"task_id": "task_uv"}})
+		case "/tasks/task_uv":
+			writeJSON(w, 200, map[string]interface{}{"code": 0, "data": map[string]interface{}{
+				"task_id": "task_uv", "type": "mesh_uv", "status": "success", "progress": 100,
+				"output": map[string]string{
+					"model_url":     "https://cdn.example/model.glb",
+					"uv_render_url": "https://cdn.example/uv_render.webp",
+				},
+			}})
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	})
+
+	ctx := context.Background()
+	id, err := client.MeshUV(ctx, MeshUVParams{
+		Input:             "file_abc",
+		Bake:              Bool(false),
+		ExportOrientation: String(ExportOrientationPlusY),
+		Compress:          String("geometry"),
+	})
+	if err != nil {
+		t.Fatalf("MeshUV: %v", err)
+	}
+	task, err := client.GetTask(ctx, id)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
+	}
+	if task.Output.UVRenderURL != "https://cdn.example/uv_render.webp" {
+		t.Fatalf("unexpected uv_render_url: %q", task.Output.UVRenderURL)
+	}
+	if task.PrimaryModelURL() != "https://cdn.example/model.glb" {
+		t.Fatalf("unexpected model url: %q", task.PrimaryModelURL())
+	}
+
+	if _, err := client.MeshUV(ctx, MeshUVParams{Input: " "}); err == nil {
+		t.Fatal("expected an error for an empty input")
+	}
+}
+
 func TestGetBalanceParsesTheStandardEnvelope(t *testing.T) {
 	_, client := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]interface{}{"code": 0, "data": map[string]float64{"balance": 12.5, "frozen": 0}})

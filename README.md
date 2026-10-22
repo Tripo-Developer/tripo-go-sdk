@@ -137,6 +137,7 @@ Every generation method returns a `task_id` (`string`). Use `WaitForTask` to awa
 | `SegmentMesh(ctx, params)` | `POST /mesh/segment` | Semantic segmentation |
 | `CompleteMesh(ctx, params)` | `POST /mesh/complete` | Mesh completion / repair |
 | `DecimateMesh(ctx, params)` | `POST /mesh/decimate` | Retopology / face-count reduction |
+| `MeshUV(ctx, params)` | `POST /mesh/uv` | Re-unwrap UVs, remapping textures / rig / animations; also returns a UV layout preview |
 
 ### Animation
 
