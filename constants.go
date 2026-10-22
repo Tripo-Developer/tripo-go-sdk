@@ -72,12 +72,27 @@ const (
 	RigTypeOthers     RigType = "others"
 )
 
-// RigSpec controls bone naming/hierarchy conventions.
+// RigSpec controls bone naming/hierarchy conventions. It is only honoured
+// for RigTypeBiped. RigSpecActorCore, RigSpecUnity, RigSpecUnreal and
+// RigSpecVRM require RigModelV30.
 type RigSpec string
 
 const (
-	RigSpecMixamo RigSpec = "mixamo"
-	RigSpecTripo  RigSpec = "tripo"
+	RigSpecMixamo    RigSpec = "mixamo"
+	RigSpecTripo     RigSpec = "tripo"
+	RigSpecActorCore RigSpec = "actorcore"
+	RigSpecUnity     RigSpec = "unity"
+	RigSpecUnreal    RigSpec = "unreal"
+	RigSpecVRM       RigSpec = "vrm"
+)
+
+// RigModel lists the `model` values accepted by POST /v3/animations/rig.
+// RigModelV10 rigs bipeds only; RigModelV25 and RigModelV30 rig every
+// RigType, and only RigModelV30 accepts RigTypeOthers.
+const (
+	RigModelV10 = "v1.0-20240301"
+	RigModelV25 = "v2.5-20260210"
+	RigModelV30 = "v3.0-20260909"
 )
 
 // AnimOutFormat is the output format for rig / retarget tasks.
@@ -131,9 +146,65 @@ const (
 	ModelVersionP2 = "P2-20260801"
 )
 
+// TextureVersion lists the texture models selectable via `texture_version`
+// on the 3D generation endpoints and via `model` on POST /v3/models/texture.
+// TextureQualityFast and the Delight fields require TextureVersionV35.
+const (
+	TextureVersionV35 = "v3.5-20260815"
+	TextureVersionV30 = "v3.0-20250812"
+	TextureVersionV25 = "v2.5-20250123"
+)
+
+// DecimateModel lists the `model` values accepted by POST /v3/mesh/decimate.
+// The server defaults to DecimateModelV20. SmartUV requires DecimateModelV30,
+// and DecimateModelV10 accepts neither Bake nor PartNames.
+const (
+	DecimateModelV10 = "v1.0"
+	DecimateModelV20 = "v2.0"
+	DecimateModelV30 = "v3.0"
+)
+
+// SegmentModel lists the `model` values accepted by POST /v3/mesh/segment.
+// The server defaults to SegmentModelV1; the SegmentationGranularity,
+// SplitByConnectivity and RefImage fields require SegmentModelV2 (beta).
+const (
+	SegmentModelV1 = "v1.0-20250506"
+	SegmentModelV2 = "v2.0-20260430"
+)
+
+// SegmentationGranularity is the `segmentation_granularity` of
+// POST /v3/mesh/segment. The server defaults to SegmentationBalanced.
+const (
+	SegmentationSimple   = "simple"
+	SegmentationBalanced = "balanced"
+	SegmentationDetailed = "detailed"
+)
+
+// CompletionMode is the `completion_mode` of POST /v3/mesh/complete.
+const (
+	// CompletionAI fills missing regions with generated geometry (default).
+	CompletionAI = "ai_completion"
+	// CompletionQuickCap closes open boundaries without AI generation.
+	CompletionQuickCap = "quick_cap"
+)
+
+// FBXPreset is the `fbx_preset` compatibility profile of
+// POST /v3/models/convert. The server defaults to FBXPresetBlender.
+const (
+	FBXPresetBlender = "blender"
+	FBXPreset3dsMax  = "3dsmax"
+	FBXPresetMixamo  = "mixamo"
+	// FBXPresetBakeScale bakes the scale transform into the geometry instead
+	// of keeping it on the node transform.
+	FBXPresetBakeScale = "bake_scale"
+)
+
 // ImageModel lists the `model` values accepted by
 // POST /v3/generation/text-to-image and POST /v3/generation/image-to-image.
 const (
+	// ImageModelSeedreamV4 is the text-to-image default; image-to-image
+	// rejects it.
+	ImageModelSeedreamV4          = "seedream_v4"
 	ImageModelSeedreamV5          = "seedream_v5"
 	ImageModelBanana              = "banana"
 	ImageModelBananaPro           = "banana_pro"
@@ -225,8 +296,12 @@ const (
 	ExportOrientationMinusY = "-y"
 )
 
-// TextureQuality is the `texture_quality` level for 3D generation.
+// TextureQuality is the `texture_quality` level for 3D generation and
+// re-texturing.
 const (
+	// TextureQualityFast requires TextureVersionV35; other texture models
+	// reject it with code 1004 rather than falling back.
+	TextureQualityFast     = "fast"
 	TextureQualityStandard = "standard"
 	TextureQualityDetailed = "detailed"
 	TextureQualityExtreme  = "extreme"

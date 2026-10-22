@@ -12,6 +12,9 @@ type APIError struct {
 	Message    string
 	Suggestion string
 	StatusCode int
+	// RequestID identifies the failed request; quote it when contacting
+	// Tripo3D support.
+	RequestID string
 }
 
 func (e *APIError) Error() string {
@@ -21,6 +24,9 @@ func (e *APIError) Error() string {
 	}
 	if e.Suggestion != "" {
 		s += " — " + e.Suggestion
+	}
+	if e.RequestID != "" {
+		s += " (request_id=" + e.RequestID + ")"
 	}
 	return s
 }

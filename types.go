@@ -2,6 +2,8 @@ package tripo3d
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -12,6 +14,7 @@ type envelope struct {
 	Data       json.RawMessage `json:"data,omitempty"`
 	Message    string          `json:"message,omitempty"`
 	Suggestion string          `json:"suggestion,omitempty"`
+	RequestID  string          `json:"request_id,omitempty"`
 }
 
 // ObjectRef is a bucket/key pair for pre-uploaded assets (STS-style upload).
@@ -86,6 +89,47 @@ func FileURL(url string) FileDescriptor {
 // returned by Client.UploadFile.
 func FileToken(token string) FileDescriptor {
 	return FileDescriptor{FileToken: token}
+}
+
+// ViewImage is one entry of the view-key image list accepted by
+// MultiviewToModelParams.Views and TexturePrompt.Images. It marshals as a
+// single-key object such as {"front": "file_abc"}.
+type ViewImage struct {
+	// View is ViewFront, ViewLeft, ViewBack, or ViewRight.
+	View  string
+	Image FileDescriptor
+}
+
+// MarshalJSON emits the {"<view>": <image>} form.
+func (v ViewImage) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]FileDescriptor{v.View: v.Image})
+}
+
+// validateViews checks a view-key list: known views only, no repeats, the
+// front view present, and at least two views in total.
+func validateViews(views []ViewImage) error {
+	seen := map[string]bool{}
+	for _, v := range views {
+		switch v.View {
+		case ViewFront, ViewLeft, ViewBack, ViewRight:
+		default:
+			return fmt.Errorf("unknown view %q", v.View)
+		}
+		if seen[v.View] {
+			return fmt.Errorf("view %q given more than once", v.View)
+		}
+		if v.Image.IsEmpty() {
+			return fmt.Errorf("view %q has no image", v.View)
+		}
+		seen[v.View] = true
+	}
+	if !seen[ViewFront] {
+		return errors.New("the front view is required")
+	}
+	if len(views) < 2 {
+		return errors.New("at least 2 views are required")
+	}
+	return nil
 }
 
 // MultiviewPrompt is a single per-view edit instruction for
@@ -221,6 +265,15 @@ func (o *TaskOutput) PrimaryModelURL() string {
 // IsRiggable reports the rig-check verdict, defaulting to false when unset.
 func (o *TaskOutput) IsRiggable() bool {
 	return o != nil && o.Riggable != nil && *o.Riggable
+}
+
+// TaskList is the POST /v3/tasks/list response payload.
+type TaskList struct {
+	// Tasks maps each task_id the server found to its snapshot.
+	Tasks map[string]Task `json:"tasks"`
+	// Missed lists the requested IDs the server could not find: unknown,
+	// expired, or created with a different API key.
+	Missed []string `json:"missed"`
 }
 
 // Balance is the GET /v3/account/balance response payload.

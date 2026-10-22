@@ -119,7 +119,7 @@ tripo3d.NewClient(tripo3d.ClientOptions{
 | --- | --- | --- |
 | `TextToModel(ctx, params)` | `POST /generation/text-to-model` | 文本 → 3D 模型 |
 | `ImageToModel(ctx, params)` | `POST /generation/image-to-model` | 单图 → 3D 模型 |
-| `MultiviewToModel(ctx, params)` | `POST /generation/multiview-to-model` | 4 视角 `[front, left, back, right]` → 3D 模型 |
+| `MultiviewToModel(ctx, params)` | `POST /generation/multiview-to-model` | 2–4 个视角（用 `Views` 按角度指定，或按 `[front, left, back, right]` 顺序）→ 3D 模型 |
 | `TextToImage(ctx, params)` | `POST /generation/text-to-image` | 文生概念图 |
 | `ImageToImage(ctx, params)` | `POST /generation/image-to-image` | 图片风格转换 / 编辑 |
 | `ImageToMultiview(ctx, params)` | `POST /generation/image-to-multiview` | 单图 → 4 视角图集 |
@@ -129,7 +129,7 @@ tripo3d.NewClient(tripo3d.ClientOptions{
 
 | 方法 | 端点 | 说明 |
 | --- | --- | --- |
-| `TextureModel(ctx, params)` | `POST /models/texture` | 为已有模型重新贴图 |
+| `TextureModel(ctx, params)` | `POST /models/texture` | 为已有模型重新贴图，用 `TexturePrompt` 描述要求 |
 | `ConvertModel(ctx, params)` | `POST /models/convert` | 转换为 GLTF / FBX / OBJ / STL / USDZ / 3MF |
 | `SegmentMesh(ctx, params)` | `POST /mesh/segment` | 语义分割 |
 | `CompleteMesh(ctx, params)` | `POST /mesh/complete` | 网格补全 / 修复 |
@@ -141,7 +141,7 @@ tripo3d.NewClient(tripo3d.ClientOptions{
 | 方法 | 端点 | 说明 |
 | --- | --- | --- |
 | `RigCheck(ctx, params)` | `POST /animations/rig-check` | 检查模型是否可绑骨、推荐骨骼类型 |
-| `RigModel(ctx, params)` | `POST /animations/rig` | 自动绑骨 |
+| `RigModel(ctx, params)` | `POST /animations/rig` | 自动绑骨（未设置 `Model` 时发送 `RigModelV30`） |
 | `RetargetAnimation(ctx, params)` | `POST /animations/retarget` | 应用预设动画 |
 
 ### 工具
@@ -149,7 +149,7 @@ tripo3d.NewClient(tripo3d.ClientOptions{
 | 方法 | 端点 | 说明 |
 | --- | --- | --- |
 | `GetTask(ctx, taskID)` | `GET /tasks/{task_id}` | 查询单个任务 |
-| `ListTasks(ctx, taskIDs)` | `POST /tasks/list` | 批量查询任务 |
+| `ListTasks(ctx, taskIDs)` | `POST /tasks/list` | 批量查询最多 100 个任务；返回以 task_id 为键的 `Tasks` 和查不到的 `Missed` |
 | `WaitForTask(ctx, taskID, opts)` | — | 轮询直到任务进入终态 |
 | `UploadFile(ctx, data, filename, contentType)` | `POST /files` | 上传文件，返回 `file_token` |
 | `GetBalance(ctx)` | `GET /account/balance` | 查询账户余额 |
@@ -239,6 +239,7 @@ if !check.Output.IsRiggable() {
 // 3. 自动绑骨（Mixamo 命名 → 可直接导入 Unity / Unreal）
 rigID, _ := client.RigModel(ctx, tripo3d.RigModelParams{
 	Input:   modelID,
+	Model:   tripo3d.String(tripo3d.RigModelV30),
 	RigType: tripo3d.String(check.Output.RigType),
 	Spec:    tripo3d.String(string(tripo3d.RigSpecMixamo)),
 })
@@ -274,7 +275,7 @@ if err != nil {
 	var reqErr *tripo3d.RequestError
 	switch {
 	case errors.As(err, &apiErr):
-		log.Printf("API 错误 %d：%s — %s", apiErr.Code, apiErr.Message, apiErr.Suggestion)
+		log.Printf("API 错误 %d：%s — %s（request_id=%s）", apiErr.Code, apiErr.Message, apiErr.Suggestion, apiErr.RequestID)
 	case errors.As(err, &reqErr):
 		log.Printf("传输错误：HTTP %d — %s", reqErr.StatusCode, reqErr.Body)
 	default:
@@ -350,7 +351,7 @@ tripo3d.OutputFormatFBX                // "FBX"
 
 | 常量 | 取值 | 说明 |
 | --- | --- | --- |
-| `ModelVersionH31` | `v3.1-20260211` | 最新，质量最佳（默认） |
+| `ModelVersionH31` | `v3.1-20260211` | 最新，质量最佳。`TextToModel`、`ImageToModel`、`MultiviewToModel` 在未设置 `Model` 时自动发送它 |
 | `ModelVersionH30` | `v3.0-20250812` | 稳定版，支持高级特性 |
 | `ModelVersionH25` | `v2.5-20250123` | 旧版本，不支持 `GeometryQuality` |
 | `ModelVersionP1` | `P1-20260311` | 低面数，干净拓扑 |
@@ -359,6 +360,29 @@ tripo3d.OutputFormatFBX                // "FBX"
 P 系列中只有 `ModelVersionP2` 支持 `Quad`，传给 `ModelVersionP1` 会返回 `400`。P1 同样不支持 `SmartLowPoly`、`GenerateParts` 和 `GeometryQuality`。
 
 另外，开启 `Quad` 会把输出格式强制为 **FBX** 而非 GLB，所以请从 `ModelURL` 推导扩展名，不要假定是 `.glb` —— 用 `downloaded.Filename(name)` 即可。
+
+### 贴图、绑骨与后处理模型
+
+| 常量组 | 用于 | 说明 |
+| --- | --- | --- |
+| `TextureVersionV35` / `V30` / `V25` | 生成接口的 `TextureVersion`、`TextureModel` 的 `Model` | `TextureQualityFast` 和 `Delight` 只能配合 `TextureVersionV35` |
+| `RigModelV10` / `V25` / `V30` | `RigModel` | 未设置 `Model` 时 `RigModel` 会发送 `RigModelV30`。只有 V3.0 支持 `RigTypeOthers` 以及 `actorcore` / `unity` / `unreal` / `vrm` 骨骼规范 |
+| `DecimateModelV10` / `V20` / `V30` | `DecimateMesh` | 服务端默认 V2.0；`SmartUV` 只能配合 V3.0 |
+| `SegmentModelV1` / `V2` | `SegmentMesh` | 分割粒度、按连通域拆分和 `RefImage` 只在 V2（Beta）生效 |
+| `CompletionAI` / `CompletionQuickCap` | `CompleteMesh.CompletionMode` | AI 补全（默认）或快速封口 |
+| `FBXPresetBlender` / `3dsMax` / `Mixamo` / `BakeScale` | `ConvertModel.FBXPreset` | FBX 兼容性预设 |
+
+重新贴图使用嵌套的 `TexturePrompt`。`Text`、`Image`、`Images` 三者互斥，`StyleImage` 只能和 `Text` 搭配：
+
+```go
+client.TextureModel(ctx, tripo3d.TextureModelParams{
+	Input:         modelID,
+	Model:         tripo3d.String(tripo3d.TextureVersionV35),
+	TexturePrompt: &tripo3d.TexturePrompt{Text: "weathered red paint"},
+})
+```
+
+旧的顶层字段 `TextPrompt`、`ImagePrompt`、`StyleImage` 已废弃。服务端会忽略顶层的这几个字段，所以 `TextureModel` 会自动把它们移进 `TexturePrompt`；1.0 版会删除。
 
 ### 生图模型
 

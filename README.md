@@ -122,7 +122,7 @@ Every generation method returns a `task_id` (`string`). Use `WaitForTask` to awa
 | --- | --- | --- |
 | `TextToModel(ctx, params)` | `POST /generation/text-to-model` | Text → 3D model |
 | `ImageToModel(ctx, params)` | `POST /generation/image-to-model` | Single image → 3D model |
-| `MultiviewToModel(ctx, params)` | `POST /generation/multiview-to-model` | 4 views `[front, left, back, right]` → 3D model |
+| `MultiviewToModel(ctx, params)` | `POST /generation/multiview-to-model` | 2–4 views (keyed by angle via `Views`, or positional `[front, left, back, right]`) → 3D model |
 | `TextToImage(ctx, params)` | `POST /generation/text-to-image` | Concept image from text |
 | `ImageToImage(ctx, params)` | `POST /generation/image-to-image` | Image style / edit |
 | `ImageToMultiview(ctx, params)` | `POST /generation/image-to-multiview` | Image → 4-view sheet |
@@ -132,7 +132,7 @@ Every generation method returns a `task_id` (`string`). Use `WaitForTask` to awa
 
 | Method | Endpoint | Description |
 | --- | --- | --- |
-| `TextureModel(ctx, params)` | `POST /models/texture` | Re-texture an existing model |
+| `TextureModel(ctx, params)` | `POST /models/texture` | Re-texture an existing model, guided by `TexturePrompt` |
 | `ConvertModel(ctx, params)` | `POST /models/convert` | Convert to GLTF / FBX / OBJ / STL / USDZ / 3MF |
 | `SegmentMesh(ctx, params)` | `POST /mesh/segment` | Semantic segmentation |
 | `CompleteMesh(ctx, params)` | `POST /mesh/complete` | Mesh completion / repair |
@@ -144,7 +144,7 @@ Every generation method returns a `task_id` (`string`). Use `WaitForTask` to awa
 | Method | Endpoint | Description |
 | --- | --- | --- |
 | `RigCheck(ctx, params)` | `POST /animations/rig-check` | Detect whether a model is riggable |
-| `RigModel(ctx, params)` | `POST /animations/rig` | Attach a skeleton |
+| `RigModel(ctx, params)` | `POST /animations/rig` | Attach a skeleton (sends `RigModelV30` when `Model` is unset) |
 | `RetargetAnimation(ctx, params)` | `POST /animations/retarget` | Apply preset animations |
 
 ### Utility
@@ -152,7 +152,7 @@ Every generation method returns a `task_id` (`string`). Use `WaitForTask` to awa
 | Method | Endpoint | Description |
 | --- | --- | --- |
 | `GetTask(ctx, taskID)` | `GET /tasks/{task_id}` | Fetch a task snapshot |
-| `ListTasks(ctx, taskIDs)` | `POST /tasks/list` | Batch task query |
+| `ListTasks(ctx, taskIDs)` | `POST /tasks/list` | Batch-query up to 100 tasks; returns `Tasks` keyed by task_id plus the `Missed` IDs |
 | `WaitForTask(ctx, taskID, opts)` | — | Poll until terminal state |
 | `UploadFile(ctx, data, filename, contentType)` | `POST /files` | Upload a raw file and get a `file_token` |
 | `GetBalance(ctx)` | `GET /account/balance` | Account credit balance |
@@ -242,6 +242,7 @@ if !check.Output.IsRiggable() {
 // 3. Attach skeleton (Mixamo-compatible bones -> Unity/Unreal ready)
 rigID, _ := client.RigModel(ctx, tripo3d.RigModelParams{
 	Input:   modelID,
+	Model:   tripo3d.String(tripo3d.RigModelV30),
 	RigType: tripo3d.String(check.Output.RigType),
 	Spec:    tripo3d.String(string(tripo3d.RigSpecMixamo)),
 })
@@ -271,7 +272,7 @@ if err != nil {
 	var reqErr *tripo3d.RequestError
 	switch {
 	case errors.As(err, &apiErr):
-		log.Printf("API error %d: %s — %s", apiErr.Code, apiErr.Message, apiErr.Suggestion)
+		log.Printf("API error %d: %s — %s (request_id=%s)", apiErr.Code, apiErr.Message, apiErr.Suggestion, apiErr.RequestID)
 	case errors.As(err, &reqErr):
 		log.Printf("transport failure: HTTP %d — %s", reqErr.StatusCode, reqErr.Body)
 	default:
@@ -344,13 +345,36 @@ tripo3d.OutputFormatFBX                // "FBX"
 
 | Constant | Value | Notes |
 | --- | --- | --- |
-| `ModelVersionH31` | `v3.1-20260211` | Latest, best quality (default) |
+| `ModelVersionH31` | `v3.1-20260211` | Latest, best quality. `TextToModel`, `ImageToModel` and `MultiviewToModel` send it when `Model` is unset |
 | `ModelVersionH30` | `v3.0-20250812` | Stable, advanced features |
 | `ModelVersionH25` | `v2.5-20250123` | Legacy; does not accept `GeometryQuality` |
 | `ModelVersionP1` | `P1-20260311` | Low-poly, clean topology |
 | `ModelVersionP2` | `P2-20260801` | Next-gen P series, quad output. Preview |
 
 `Quad` is accepted only by `ModelVersionP2` within the P series — sending it with `ModelVersionP1` returns a `400`. P1 also rejects `SmartLowPoly`, `GenerateParts`, and `GeometryQuality`. Enabling `Quad` also forces the output format to **FBX** instead of GLB, so derive the file extension from `ModelURL` rather than assuming `.glb` — use `downloaded.Filename(name)` for that.
+
+### Texture, rigging and post-processing models
+
+| Constant group | Used by | Values |
+| --- | --- | --- |
+| `TextureVersionV35` / `V30` / `V25` | `TextureVersion` on the generation endpoints, `Model` on `TextureModel` | `TextureQualityFast` and `Delight` require `TextureVersionV35` |
+| `RigModelV10` / `V25` / `V30` | `RigModel` | `RigModel` sends `RigModelV30` when `Model` is unset. Only V3.0 accepts `RigTypeOthers` and the `actorcore` / `unity` / `unreal` / `vrm` specs |
+| `DecimateModelV10` / `V20` / `V30` | `DecimateMesh` | Server default V2.0; `SmartUV` requires V3.0 |
+| `SegmentModelV1` / `V2` | `SegmentMesh` | Granularity, connectivity split and `RefImage` require V2 (beta) |
+| `CompletionAI` / `CompletionQuickCap` | `CompleteMesh.CompletionMode` | AI completion (default) or a fast cap of open boundaries |
+| `FBXPresetBlender` / `3dsMax` / `Mixamo` / `BakeScale` | `ConvertModel.FBXPreset` | FBX compatibility profile |
+
+Re-texturing takes a nested `TexturePrompt`. `Text`, `Image` and `Images` are mutually exclusive, and `StyleImage` only goes with `Text`:
+
+```go
+client.TextureModel(ctx, tripo3d.TextureModelParams{
+	Input:         modelID,
+	Model:         tripo3d.String(tripo3d.TextureVersionV35),
+	TexturePrompt: &tripo3d.TexturePrompt{Text: "weathered red paint"},
+})
+```
+
+The old top-level `TextPrompt`, `ImagePrompt` and `StyleImage` fields are deprecated. The API ignores them at the top level, so `TextureModel` moves them into `TexturePrompt` for you; they will be removed in 1.0.
 
 ### Image generation models
 

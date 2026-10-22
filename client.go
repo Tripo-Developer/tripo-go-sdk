@@ -15,6 +15,7 @@ package tripo3d
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"time"
@@ -149,20 +150,25 @@ func (c *Client) GetTask(ctx context.Context, taskID string) (*Task, error) {
 	return &task, nil
 }
 
-// ListTasks calls POST /v3/tasks/list to batch-query multiple tasks in one
-// round trip.
-func (c *Client) ListTasks(ctx context.Context, taskIDs []string) ([]Task, error) {
+// MaxListTasks is the most task IDs POST /v3/tasks/list accepts per call.
+const MaxListTasks = 100
+
+// ListTasks calls POST /v3/tasks/list to batch-query up to MaxListTasks
+// tasks in one round trip. IDs the server cannot find are reported in
+// TaskList.Missed rather than as an error.
+func (c *Client) ListTasks(ctx context.Context, taskIDs []string) (*TaskList, error) {
 	if len(taskIDs) == 0 {
 		return nil, errors.New("tripo3d: ListTasks: taskIDs must be non-empty")
 	}
-	var result struct {
-		Tasks []Task `json:"tasks"`
+	if len(taskIDs) > MaxListTasks {
+		return nil, fmt.Errorf("tripo3d: ListTasks: at most %d task IDs per call, got %d", MaxListTasks, len(taskIDs))
 	}
+	var result TaskList
 	body := map[string]interface{}{"task_ids": taskIDs}
 	if err := c.doJSON(ctx, http.MethodPost, "/tasks/list", body, &result); err != nil {
 		return nil, err
 	}
-	return result.Tasks, nil
+	return &result, nil
 }
 
 // WaitOptions configures Client.WaitForTask.

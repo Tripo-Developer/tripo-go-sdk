@@ -29,7 +29,13 @@ func (c *Client) RigCheck(ctx context.Context, params RigCheckParams) (string, e
 
 // RigModelParams are the parameters for POST /v3/animations/rig.
 type RigModelParams struct {
-	Input     string  `json:"input"`
+	Input string `json:"input"`
+
+	// Model selects the rigging model; see the RigModel constants. When
+	// unset, RigModel sends RigModelV30: the API currently rejects rig
+	// requests that omit model.
+	Model *string `json:"model,omitempty"`
+
 	RigType   *string `json:"rig_type,omitempty"`
 	Spec      *string `json:"spec,omitempty"`
 	OutFormat *string `json:"out_format,omitempty"`
@@ -42,6 +48,9 @@ type RigModelParams struct {
 func (c *Client) RigModel(ctx context.Context, params RigModelParams) (string, error) {
 	if strings.TrimSpace(params.Input) == "" {
 		return "", errors.New("tripo3d: RigModel: Input (source task_id) is required")
+	}
+	if params.Model == nil {
+		params.Model = String(RigModelV30)
 	}
 	body, err := buildPayload(params, params.Extra)
 	if err != nil {

@@ -61,6 +61,7 @@ func main() {
 	// 3. Attach the skeleton (use Mixamo naming so it drops into Unity/Unreal).
 	rigTaskID, err := client.RigModel(ctx, tripo3d.RigModelParams{
 		Input:   modelTaskID,
+		Model:   tripo3d.String(tripo3d.RigModelV30),
 		RigType: tripo3d.String(rigType),
 		Spec:    tripo3d.String(string(tripo3d.RigSpecMixamo)),
 	})

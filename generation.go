@@ -8,8 +8,13 @@ import (
 
 // TextToModelParams are the parameters for POST /v3/generation/text-to-model.
 type TextToModelParams struct {
-	Prompt          string  `json:"prompt"`
-	Model           *string `json:"model,omitempty"`
+	Prompt string `json:"prompt"`
+
+	// Model selects the generation model; see the ModelVersion constants.
+	// When unset, TextToModel sends ModelVersionH31: the API currently
+	// rejects generation requests that omit model.
+	Model *string `json:"model,omitempty"`
+
 	NegativePrompt  *string `json:"negative_prompt,omitempty"`
 	ImageSeed       *int64  `json:"image_seed,omitempty"`
 	ModelSeed       *int64  `json:"model_seed,omitempty"`
@@ -35,6 +40,14 @@ type TextToModelParams struct {
 	// the ExportOrientation constants.
 	ExportOrientation *string `json:"export_orientation,omitempty"`
 
+	// TextureVersion selects the texture model; see the TextureVersion
+	// constants. The server picks the default for Model when unset.
+	TextureVersion *string `json:"texture_version,omitempty"`
+
+	// Delight removes baked-in lighting from the texture. The server
+	// defaults to true; it only takes effect with TextureVersionV35.
+	Delight *bool `json:"delight,omitempty"`
+
 	Style *string `json:"style,omitempty"`
 
 	// Extra carries forward-compatible fields not yet modeled above; they
@@ -48,6 +61,9 @@ func (c *Client) TextToModel(ctx context.Context, params TextToModelParams) (str
 	if strings.TrimSpace(params.Prompt) == "" {
 		return "", errors.New("tripo3d: TextToModel: Prompt is required")
 	}
+	if params.Model == nil {
+		params.Model = String(ModelVersionH31)
+	}
 	body, err := buildPayload(params, params.Extra)
 	if err != nil {
 		return "", err
@@ -60,19 +76,24 @@ type ImageToModelParams struct {
 	// Input is the source image: a public URL, a file_token, or the
 	// task_id of an earlier text-to-image or image-to-image task whose
 	// output should be reused.
-	Input              FileDescriptor `json:"input"`
-	Model              *string        `json:"model,omitempty"`
-	EnableImageAutofix *bool          `json:"enable_image_autofix,omitempty"`
-	ModelSeed          *int64         `json:"model_seed,omitempty"`
-	TextureSeed        *int64         `json:"texture_seed,omitempty"`
-	Texture            *bool          `json:"texture,omitempty"`
-	PBR                *bool          `json:"pbr,omitempty"`
-	TextureQuality     *string        `json:"texture_quality,omitempty"`
-	TextureAlignment   *string        `json:"texture_alignment,omitempty"`
-	GeometryQuality    *string        `json:"geometry_quality,omitempty"`
-	FaceLimit          *int64         `json:"face_limit,omitempty"`
-	AutoSize           *bool          `json:"auto_size,omitempty"`
-	Orientation        *string        `json:"orientation,omitempty"`
+	Input FileDescriptor `json:"input"`
+
+	// Model selects the generation model; see the ModelVersion constants.
+	// When unset, ImageToModel sends ModelVersionH31: the API currently
+	// rejects generation requests that omit model.
+	Model *string `json:"model,omitempty"`
+
+	EnableImageAutofix *bool   `json:"enable_image_autofix,omitempty"`
+	ModelSeed          *int64  `json:"model_seed,omitempty"`
+	TextureSeed        *int64  `json:"texture_seed,omitempty"`
+	Texture            *bool   `json:"texture,omitempty"`
+	PBR                *bool   `json:"pbr,omitempty"`
+	TextureQuality     *string `json:"texture_quality,omitempty"`
+	TextureAlignment   *string `json:"texture_alignment,omitempty"`
+	GeometryQuality    *string `json:"geometry_quality,omitempty"`
+	FaceLimit          *int64  `json:"face_limit,omitempty"`
+	AutoSize           *bool   `json:"auto_size,omitempty"`
+	Orientation        *string `json:"orientation,omitempty"`
 
 	// Quad outputs a quad mesh instead of triangles, which forces the
 	// output format to FBX rather than GLB. Within the P series only
@@ -88,6 +109,14 @@ type ImageToModelParams struct {
 	// the ExportOrientation constants.
 	ExportOrientation *string `json:"export_orientation,omitempty"`
 
+	// TextureVersion selects the texture model; see the TextureVersion
+	// constants. The server picks the default for Model when unset.
+	TextureVersion *string `json:"texture_version,omitempty"`
+
+	// Delight removes baked-in lighting from the texture. The server
+	// defaults to true; it only takes effect with TextureVersionV35.
+	Delight *bool `json:"delight,omitempty"`
+
 	Style *string `json:"style,omitempty"`
 
 	Extra map[string]interface{} `json:"-"`
@@ -99,6 +128,9 @@ func (c *Client) ImageToModel(ctx context.Context, params ImageToModelParams) (s
 	if params.Input.IsEmpty() {
 		return "", errors.New("tripo3d: ImageToModel: Input is required (url, file_token, or task_id)")
 	}
+	if params.Model == nil {
+		params.Model = String(ModelVersionH31)
+	}
 	body, err := buildPayload(params, params.Extra)
 	if err != nil {
 		return "", err
@@ -109,21 +141,26 @@ func (c *Client) ImageToModel(ctx context.Context, params ImageToModelParams) (s
 // MultiviewToModelParams are the parameters for
 // POST /v3/generation/multiview-to-model.
 type MultiviewToModelParams struct {
+	// Views lists 2 to 4 images keyed by angle, in any order, and is the
+	// recommended input form. The front view is mandatory.
+	Views []ViewImage `json:"-"`
+
 	// Inputs holds exactly 4 views in [front, left, back, right] order.
 	// The front view is mandatory and at least 2 views must be supplied;
 	// leave the others as a zero-value FileDescriptor to skip them.
-	//
-	// To instead reuse the 4-view output of an earlier image-to-multiview
-	// or edit-multiview task, pass that task_id as a single-element slice
-	// via InputTaskID.
 	Inputs *[4]FileDescriptor `json:"-"`
 
 	// InputTaskID reuses the 4-view output of a successful
-	// image-to-multiview or edit-multiview task. Mutually exclusive with
-	// Inputs.
+	// image-to-multiview or edit-multiview task.
+	//
+	// Exactly one of Views, Inputs and InputTaskID must be set.
 	InputTaskID *string `json:"-"`
 
-	Model            *string `json:"model,omitempty"`
+	// Model selects the generation model; see the ModelVersion constants.
+	// When unset, MultiviewToModel sends ModelVersionH31: the API currently
+	// rejects generation requests that omit model.
+	Model *string `json:"model,omitempty"`
+
 	ModelSeed        *int64  `json:"model_seed,omitempty"`
 	TextureSeed      *int64  `json:"texture_seed,omitempty"`
 	Texture          *bool   `json:"texture,omitempty"`
@@ -146,17 +183,36 @@ type MultiviewToModelParams struct {
 	ExportUV          *bool   `json:"export_uv,omitempty"`
 	ExportOrientation *string `json:"export_orientation,omitempty"`
 
+	// TextureVersion selects the texture model; see the TextureVersion
+	// constants. The server picks the default for Model when unset.
+	TextureVersion *string `json:"texture_version,omitempty"`
+
+	// Delight removes baked-in lighting from the texture. The server
+	// defaults to true; it only takes effect with TextureVersionV35.
+	Delight *bool `json:"delight,omitempty"`
+
 	Extra map[string]interface{} `json:"-"`
 }
 
 // MultiviewToModel calls POST /v3/generation/multiview-to-model and returns
 // the resulting task_id.
 func (c *Client) MultiviewToModel(ctx context.Context, params MultiviewToModelParams) (string, error) {
-	if params.Inputs == nil && params.InputTaskID == nil {
-		return "", errors.New("tripo3d: MultiviewToModel: provide Inputs ([front, left, back, right]) or InputTaskID")
+	set := 0
+	for _, ok := range []bool{len(params.Views) > 0, params.Inputs != nil, params.InputTaskID != nil} {
+		if ok {
+			set++
+		}
 	}
-	if params.Inputs != nil && params.InputTaskID != nil {
-		return "", errors.New("tripo3d: MultiviewToModel: Inputs and InputTaskID are mutually exclusive")
+	if set == 0 {
+		return "", errors.New("tripo3d: MultiviewToModel: provide Views, Inputs ([front, left, back, right]) or InputTaskID")
+	}
+	if set > 1 {
+		return "", errors.New("tripo3d: MultiviewToModel: Views, Inputs and InputTaskID are mutually exclusive")
+	}
+	if len(params.Views) > 0 {
+		if err := validateViews(params.Views); err != nil {
+			return "", errors.New("tripo3d: MultiviewToModel: Views: " + err.Error())
+		}
 	}
 	if params.Inputs != nil {
 		if params.Inputs[0].IsEmpty() {
@@ -172,13 +228,19 @@ func (c *Client) MultiviewToModel(ctx context.Context, params MultiviewToModelPa
 			return "", errors.New("tripo3d: MultiviewToModel: at least 2 views are required")
 		}
 	}
+	if params.Model == nil {
+		params.Model = String(ModelVersionH31)
+	}
 	body, err := buildPayload(params, params.Extra)
 	if err != nil {
 		return "", err
 	}
-	if params.Inputs != nil {
+	switch {
+	case len(params.Views) > 0:
+		body["inputs"] = params.Views
+	case params.Inputs != nil:
 		body["inputs"] = params.Inputs
-	} else {
+	default:
 		body["inputs"] = []map[string]string{{"task_id": *params.InputTaskID}}
 	}
 	return c.createTask(ctx, "/generation/multiview-to-model", body)

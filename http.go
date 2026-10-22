@@ -255,6 +255,7 @@ func parseEnvelope(data []byte, statusCode int, out interface{}) error {
 			Message:    env.Message,
 			Suggestion: env.Suggestion,
 			StatusCode: statusCode,
+			RequestID:  env.RequestID,
 		}
 	}
 	if out == nil {

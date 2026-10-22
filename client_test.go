@@ -437,6 +437,7 @@ func TestAPIErrorResponseRaisesAPIError(t *testing.T) {
 	_, client := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]interface{}{
 			"code": 2010, "message": "Insufficient credits", "suggestion": "Please top up your account",
+			"request_id": "req_123",
 		})
 	})
 
@@ -445,8 +446,11 @@ func TestAPIErrorResponseRaisesAPIError(t *testing.T) {
 	if !asAPIError(err, &apiErr) {
 		t.Fatalf("expected *APIError, got %T: %v", err, err)
 	}
-	if apiErr.Code != 2010 || apiErr.Message != "Insufficient credits" {
+	if apiErr.Code != 2010 || apiErr.Message != "Insufficient credits" || apiErr.RequestID != "req_123" {
 		t.Fatalf("unexpected APIError: %+v", apiErr)
+	}
+	if !strings.Contains(apiErr.Error(), "request_id=req_123") {
+		t.Fatalf("request_id missing from the error message: %s", apiErr.Error())
 	}
 }
 
@@ -460,7 +464,7 @@ func TestRigCheckRigModelAndRetargetBuildCorrectPayloads(t *testing.T) {
 			}
 			writeJSON(w, 200, map[string]interface{}{"code": 0, "data": map[string]string{"task_id": "chk_1"}})
 		case "/animations/rig":
-			if body["input"] != "task_src" || body["rig_type"] != "biped" || body["spec"] != "mixamo" {
+			if body["input"] != "task_src" || body["rig_type"] != "biped" || body["spec"] != "mixamo" || body["model"] != RigModelV30 {
 				t.Fatalf("unexpected rig body: %v", body)
 			}
 			writeJSON(w, 200, map[string]interface{}{"code": 0, "data": map[string]string{"task_id": "rig_1"}})
