@@ -368,6 +368,12 @@ http.HandleFunc("/tripo", func(w http.ResponseWriter, r *http.Request) {
 
 `VerifyWebhook` also rejects deliveries whose timestamp is more than 5 minutes from now, to stop replays. Failed deliveries are retried, so use `Tripo-Webhook-Delivery` (`WebhookDeliveryHeader`) to drop duplicates.
 
+---
+
+## OpenAI-compatible image API
+
+Tripo also serves image generation and editing over the OpenAI Images API protocol, at `<base URL>/openai` (for example `https://openapi.tripo3d.ai/v3/openai`). This SDK doesn't wrap it: point any OpenAI client, such as the official [openai-go](https://github.com/openai/openai-go), at that URL with your Tripo API key. Only `gpt-image-2`, `gpt-image-2.5-flare` and `gpt-image-2.5-sunburst` are accepted. Images come back as signed URLs, never `b64_json`, and there is no `usage` field; billing is the same as `TextToImage` / `ImageToImage`.
+
 ## Constants
 
 ```go

@@ -374,6 +374,12 @@ http.HandleFunc("/tripo", func(w http.ResponseWriter, r *http.Request) {
 
 `VerifyWebhook` 还会拒绝时间戳与当前时间相差超过 5 分钟的推送，以防重放。推送失败会重试，所以请用 `Tripo-Webhook-Delivery`（`WebhookDeliveryHeader`）去重。
 
+---
+
+## OpenAI 兼容的图像接口
+
+Tripo 还按 OpenAI Images API 协议提供文生图和图生图，地址是 `<base URL>/openai`（例如 `https://openapi.tripo3d.com/v3/openai`）。本 SDK 不封装这部分：把任意 OpenAI 客户端（比如官方的 [openai-go](https://github.com/openai/openai-go)）指向这个地址，用你的 Tripo API Key 即可。只接受 `gpt-image-2`、`gpt-image-2.5-flare` 和 `gpt-image-2.5-sunburst` 三个模型名。图片一律以加签 URL 返回，不返回 `b64_json`，也没有 `usage` 字段；计费与 `TextToImage` / `ImageToImage` 相同。
+
 ## 常量枚举
 
 ```go
