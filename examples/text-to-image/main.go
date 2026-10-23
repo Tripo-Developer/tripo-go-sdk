@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	tripo3d "github.com/VAST-AI-Research/tripo-go-sdk"
+	tripo3d "github.com/Tripo-Developer/tripo-go-sdk"
 )
 
 func main() {

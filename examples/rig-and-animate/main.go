@@ -13,11 +13,11 @@ import (
 	"os"
 	"time"
 
-	tripo3d "github.com/VAST-AI-Research/tripo-go-sdk"
+	tripo3d "github.com/Tripo-Developer/tripo-go-sdk"
 )
 
 func main() {
-	imageURL := "https://raw.githubusercontent.com/VAST-AI-Research/tripo-python-sdk/master/example.png"
+	imageURL := "https://raw.githubusercontent.com/Tripo-Developer/tripo-go-sdk/main/assets/character.jpg"
 	if len(os.Args) > 1 {
 		imageURL = os.Args[1]
 	}

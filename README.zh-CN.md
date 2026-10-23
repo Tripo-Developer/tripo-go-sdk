@@ -21,20 +21,15 @@ Tripo 官方 **Go SDK**，用于访问 [Tripo3D v3 API](https://developers.tripo
 ## 安装
 
 ```bash
-go get github.com/VAST-AI-Research/tripo-go-sdk
+go get github.com/Tripo-Developer/tripo-go-sdk
 ```
 
-如果仓库是私有的，需要让 Go 通过 SSH 拉取，并把它标记为私有模块以跳过公共校验和数据库：
-
-```bash
-export GOPRIVATE=github.com/VAST-AI-Research/*
-git config --global url."git@github.com:".insteadOf "https://github.com/"
-```
+0.4.x 及更早的版本以 `github.com/VAST-AI-Research/tripo-go-sdk` 发布。升级时，请把代码和 `go.mod` 里的这个导入路径换成 `github.com/Tripo-Developer/tripo-go-sdk`。
 
 如果是基于本地代码进行开发调试，可以改用 `replace` 指令：
 
 ```bash
-go mod edit -replace github.com/VAST-AI-Research/tripo-go-sdk=../tripo3d-sdk-go
+go mod edit -replace github.com/Tripo-Developer/tripo-go-sdk=../tripo3d-sdk-go
 go mod tidy
 ```
 
@@ -55,7 +50,7 @@ import (
 	"log"
 	"time"
 
-	tripo3d "github.com/VAST-AI-Research/tripo-go-sdk"
+	tripo3d "github.com/Tripo-Developer/tripo-go-sdk"
 )
 
 func main() {
