@@ -246,6 +246,34 @@ func (c *Client) MultiviewToModel(ctx context.Context, params MultiviewToModelPa
 	return c.createTask(ctx, "/generation/multiview-to-model", body)
 }
 
+// ImageToSplatParams are the parameters for
+// POST /v3/generation/image-to-splat.
+type ImageToSplatParams struct {
+	// Input is a file_token or URL of a PNG, JPEG or WebP image of at most
+	// 20 MB, ideally at least 256×256 with a clean background.
+	Input string `json:"input"`
+
+	// ModelSeed makes the output reproducible for the same input.
+	ModelSeed *int64 `json:"model_seed,omitempty"`
+
+	Extra map[string]interface{} `json:"-"`
+}
+
+// ImageToSplat calls POST /v3/generation/image-to-splat and returns the
+// resulting task_id. The output is a 3D Gaussian Splat rather than a mesh:
+// TaskOutput.ModelURL points at a .splat file, so name downloads with
+// DownloadedModel.Filename rather than assuming GLB.
+func (c *Client) ImageToSplat(ctx context.Context, params ImageToSplatParams) (string, error) {
+	if strings.TrimSpace(params.Input) == "" {
+		return "", errors.New("tripo3d: ImageToSplat: Input is required (file_token or URL)")
+	}
+	body, err := buildPayload(params, params.Extra)
+	if err != nil {
+		return "", err
+	}
+	return c.createTask(ctx, "/generation/image-to-splat", body)
+}
+
 // TextToImageParams are the parameters for POST /v3/generation/text-to-image.
 //
 // Several fields are only honoured by a subset of the ImageModel values;

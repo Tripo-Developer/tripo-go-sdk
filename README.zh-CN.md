@@ -119,6 +119,7 @@ tripo3d.NewClient(tripo3d.ClientOptions{
 | `ImageToImage(ctx, params)` | `POST /generation/image-to-image` | 图片风格转换 / 编辑 |
 | `ImageToMultiview(ctx, params)` | `POST /generation/image-to-multiview` | 单图 → 4 视角图集 |
 | `EditMultiview(ctx, params)` | `POST /generation/edit-multiview` | 编辑已生成的多视角图集 |
+| `ImageToSplat(ctx, params)` | `POST /generation/image-to-splat` | 单图 → 3D 高斯泼溅（`.splat`） |
 
 ### 模型后处理
 
@@ -126,7 +127,9 @@ tripo3d.NewClient(tripo3d.ClientOptions{
 | --- | --- | --- |
 | `TextureModel(ctx, params)` | `POST /models/texture` | 为已有模型重新贴图，用 `TexturePrompt` 描述要求 |
 | `ConvertModel(ctx, params)` | `POST /models/convert` | 转换为 GLTF / FBX / OBJ / STL / USDZ / 3MF |
+| `ImportModel(ctx, params)` | `POST /models/import` | 导入外部 GLB / GLTF / FBX / OBJ / STL，供后处理接口使用（免费） |
 | `SegmentMesh(ctx, params)` | `POST /mesh/segment` | 语义分割 |
+| `SmartSegment(ctx, params)` | `POST /mesh/smartsegment` | 从图片（`SegTypeImage`）或 GLB（`SegTypeModel`，须传 `Transform`）一键分割；结果在 `Output.SegModelURL` |
 | `CompleteMesh(ctx, params)` | `POST /mesh/complete` | 网格补全 / 修复 |
 | `DecimateMesh(ctx, params)` | `POST /mesh/decimate` | 减面 / 重拓扑 |
 | `MeshUV(ctx, params)` | `POST /mesh/uv` | 重新展 UV，并映射原有贴图 / 骨骼 / 动画；额外返回 UV 布局预览图 |
@@ -147,8 +150,12 @@ tripo3d.NewClient(tripo3d.ClientOptions{
 | `ListTasks(ctx, taskIDs)` | `POST /tasks/list` | 批量查询最多 100 个任务；返回以 task_id 为键的 `Tasks` 和查不到的 `Missed` |
 | `WaitForTask(ctx, taskID, opts)` | — | 轮询直到任务进入终态 |
 | `UploadFile(ctx, data, filename, contentType)` | `POST /files` | 上传文件，返回 `file_token` |
+| `UploadLargeFile(ctx, body, size, format)` | `POST /files/presign` + PUT | 把文件直接流式上传到存储；超过 60 MB 时推荐使用 |
+| `PresignUpload(ctx, format)` | `POST /files/presign` | 预留 `file_token` 和用于 PUT 的存储地址 |
 | `GetBalance(ctx)` | `GET /account/balance` | 查询账户余额 |
+| `GetUsage(ctx, opts)` | `GET /account/usage` | 按任务列出积分消耗，最新的在前（`Limit` 最大 200，可用 `Offset` 翻页） |
 | `DownloadModel(ctx, task)` | — | 把任务的主模型 URL 下载为 `[]byte` |
+| `VerifyWebhook(payload, header, secret, opts)` | — | 校验并解析一次 webhook 推送 |
 
 ---
 
@@ -209,6 +216,21 @@ tripo3d.TextToModelParams{
 ```
 
 每个 `*Params` 结构体都有一个 `Extra map[string]interface{}` 字段，用于透传 SDK 尚未建模的新字段。
+
+### 大文件与外部模型
+
+`UploadFile` 会让文件经过 API 服务器中转。超过 60 MB 的文件请用 `UploadLargeFile`，它把文件直接流式传到存储。存储需要预先知道确切大小，所以要同时传入 reader 和文件大小。之后用 `ImportModel` 把外部模型变成一个任务，后处理接口就能直接使用它：
+
+```go
+f, _ := os.Open("./character.fbx")
+defer f.Close()
+info, _ := f.Stat()
+uploaded, err := client.UploadLargeFile(ctx, f, info.Size(), "fbx")
+
+importID, err := client.ImportModel(ctx, tripo3d.ImportModelParams{Input: uploaded.FileToken})
+client.WaitForTask(ctx, importID, tripo3d.WaitOptions{})
+rigID, err := client.RigModel(ctx, tripo3d.RigModelParams{Input: importID})
+```
 
 ---
 
@@ -327,6 +349,30 @@ if err != nil {
 ```
 
 此时应先去任务列表核对,不要盲目重发——盲目重试正是重复扣费的根源。
+
+---
+
+## Webhook
+
+除了轮询，也可以在控制台配置一个地址，让 Tripo 主动推送 `task.completed`、`task.failed` 和 `balance.low` 事件。处理前先用该地址的签名密钥（`whsec_…`）校验每次推送，并且必须传入原样收到的请求体：
+
+```go
+http.HandleFunc("/tripo", func(w http.ResponseWriter, r *http.Request) {
+	body, _ := io.ReadAll(r.Body)
+	event, err := tripo3d.VerifyWebhook(body, r.Header.Get(tripo3d.WebhookSignatureHeader), secret, tripo3d.WebhookOptions{})
+	if err != nil {
+		http.Error(w, "bad signature", http.StatusBadRequest)
+		return
+	}
+	if event.Type == tripo3d.WebhookTaskCompleted {
+		task, _ := event.Task()
+		log.Print(task.PrimaryModelURL())
+	}
+	w.WriteHeader(http.StatusOK)
+})
+```
+
+`VerifyWebhook` 还会拒绝时间戳与当前时间相差超过 5 分钟的推送，以防重放。推送失败会重试，所以请用 `Tripo-Webhook-Delivery`（`WebhookDeliveryHeader`）去重。
 
 ## 常量枚举
 

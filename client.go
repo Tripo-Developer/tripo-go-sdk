@@ -16,8 +16,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -121,6 +125,45 @@ func (c *Client) GetBalance(ctx context.Context) (*Balance, error) {
 	return &balance, nil
 }
 
+// MaxUsageLimit is the most records GET /v3/account/usage returns per call.
+const MaxUsageLimit = 200
+
+// UsageOptions pages through GET /v3/account/usage. The zero value returns
+// the server default of the 50 most recent records.
+type UsageOptions struct {
+	// Limit is the number of records to return, from 1 to MaxUsageLimit.
+	Limit int
+	// Offset skips that many of the most recent records.
+	Offset int
+}
+
+// GetUsage calls GET /v3/account/usage and returns the credits consumed per
+// task, newest first.
+func (c *Client) GetUsage(ctx context.Context, opts UsageOptions) ([]UsageRecord, error) {
+	if opts.Limit < 0 || opts.Limit > MaxUsageLimit {
+		return nil, fmt.Errorf("tripo3d: GetUsage: Limit must be between 1 and %d, got %d", MaxUsageLimit, opts.Limit)
+	}
+	if opts.Offset < 0 {
+		return nil, fmt.Errorf("tripo3d: GetUsage: Offset must not be negative, got %d", opts.Offset)
+	}
+	query := url.Values{}
+	if opts.Limit > 0 {
+		query.Set("limit", strconv.Itoa(opts.Limit))
+	}
+	if opts.Offset > 0 {
+		query.Set("offset", strconv.Itoa(opts.Offset))
+	}
+	path := "/account/usage"
+	if len(query) > 0 {
+		path += "?" + query.Encode()
+	}
+	var records []UsageRecord
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &records); err != nil {
+		return nil, err
+	}
+	return records, nil
+}
+
 // ─────────────────────────────── Files ─────────────────────────────────────
 
 // UploadFile calls POST /v3/files, uploading a raw file and returning its
@@ -134,6 +177,47 @@ func (c *Client) UploadFile(ctx context.Context, data []byte, filename, contentT
 		return nil, err
 	}
 	return &uploaded, nil
+}
+
+// PresignUpload calls POST /v3/files/presign, reserving a file_token and a
+// URL to PUT the file to. format is the file extension, such as "glb" or
+// "png"; a leading dot is ignored. Most callers want UploadLargeFile, which
+// also performs the PUT.
+func (c *Client) PresignUpload(ctx context.Context, format string) (*PresignedUpload, error) {
+	format = strings.ToLower(strings.TrimPrefix(strings.TrimSpace(format), "."))
+	if format == "" {
+		return nil, errors.New("tripo3d: PresignUpload: format (file extension) is required")
+	}
+	var presigned PresignedUpload
+	if err := c.doJSON(ctx, http.MethodPost, "/files/presign", map[string]string{"format": format}, &presigned); err != nil {
+		return nil, err
+	}
+	return &presigned, nil
+}
+
+// UploadLargeFile uploads size bytes from body straight to storage and
+// returns the file's token. It is the recommended upload path for files
+// over 60 MB, and the file never passes through the API server.
+//
+// format is the file extension, such as "glb". The storage service needs
+// the exact size up front, so for a file on disk pass the *os.File and its
+// Stat().Size(). The upload is bounded by ctx only, not
+// ClientOptions.Timeout, and is not retried: body cannot be replayed.
+func (c *Client) UploadLargeFile(ctx context.Context, body io.Reader, size int64, format string) (*UploadedFile, error) {
+	if body == nil {
+		return nil, errors.New("tripo3d: UploadLargeFile: body is required")
+	}
+	if size <= 0 {
+		return nil, fmt.Errorf("tripo3d: UploadLargeFile: size must be positive, got %d", size)
+	}
+	presigned, err := c.PresignUpload(ctx, format)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.putRaw(ctx, presigned.PresignedURL, body, size); err != nil {
+		return nil, err
+	}
+	return &UploadedFile{FileToken: presigned.FileToken}, nil
 }
 
 // ────────────────────────── Task management ────────────────────────────────

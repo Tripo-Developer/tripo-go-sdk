@@ -234,6 +234,32 @@ func (c *Client) getRaw(ctx context.Context, rawURL string) ([]byte, string, err
 	return data, resp.Header.Get("Content-Type"), nil
 }
 
+// putRaw uploads body to a presigned storage URL. The URL carries its own
+// signature, and storage rejects requests that also send an Authorization
+// header, so the API key is deliberately left out.
+func (c *Client) putRaw(ctx context.Context, rawURL string, body io.Reader, size int64) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, rawURL, body)
+	if err != nil {
+		return err
+	}
+	req.ContentLength = size
+	req.Header.Set("Content-Type", "application/octet-stream")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return &RequestError{Message: fmt.Sprintf("upload failed: %v", err), Err: err}
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return &RequestError{
+			Message:    fmt.Sprintf("upload failed with HTTP %d", resp.StatusCode),
+			StatusCode: resp.StatusCode,
+			Body:       string(data),
+		}
+	}
+	return nil
+}
+
 // parseEnvelope parses the standard `{ code, data, message, suggestion }`
 // envelope, decoding `data` into out on success (code == 0), or returning
 // *APIError / *RequestError otherwise.

@@ -122,6 +122,7 @@ Every generation method returns a `task_id` (`string`). Use `WaitForTask` to awa
 | `ImageToImage(ctx, params)` | `POST /generation/image-to-image` | Image style / edit |
 | `ImageToMultiview(ctx, params)` | `POST /generation/image-to-multiview` | Image → 4-view sheet |
 | `EditMultiview(ctx, params)` | `POST /generation/edit-multiview` | Refine multiview output |
+| `ImageToSplat(ctx, params)` | `POST /generation/image-to-splat` | Single image → 3D Gaussian splat (`.splat`) |
 
 ### Model post-processing
 
@@ -129,7 +130,9 @@ Every generation method returns a `task_id` (`string`). Use `WaitForTask` to awa
 | --- | --- | --- |
 | `TextureModel(ctx, params)` | `POST /models/texture` | Re-texture an existing model, guided by `TexturePrompt` |
 | `ConvertModel(ctx, params)` | `POST /models/convert` | Convert to GLTF / FBX / OBJ / STL / USDZ / 3MF |
+| `ImportModel(ctx, params)` | `POST /models/import` | Bring an external GLB / GLTF / FBX / OBJ / STL into Tripo for post-processing (free) |
 | `SegmentMesh(ctx, params)` | `POST /mesh/segment` | Semantic segmentation |
+| `SmartSegment(ctx, params)` | `POST /mesh/smartsegment` | Segmentation pipeline from an image (`SegTypeImage`) or a GLB (`SegTypeModel`, needs `Transform`); result in `Output.SegModelURL` |
 | `CompleteMesh(ctx, params)` | `POST /mesh/complete` | Mesh completion / repair |
 | `DecimateMesh(ctx, params)` | `POST /mesh/decimate` | Retopology / face-count reduction |
 | `MeshUV(ctx, params)` | `POST /mesh/uv` | Re-unwrap UVs, remapping textures / rig / animations; also returns a UV layout preview |
@@ -150,8 +153,12 @@ Every generation method returns a `task_id` (`string`). Use `WaitForTask` to awa
 | `ListTasks(ctx, taskIDs)` | `POST /tasks/list` | Batch-query up to 100 tasks; returns `Tasks` keyed by task_id plus the `Missed` IDs |
 | `WaitForTask(ctx, taskID, opts)` | — | Poll until terminal state |
 | `UploadFile(ctx, data, filename, contentType)` | `POST /files` | Upload a raw file and get a `file_token` |
+| `UploadLargeFile(ctx, body, size, format)` | `POST /files/presign` + PUT | Stream a file straight to storage; recommended over 60 MB |
+| `PresignUpload(ctx, format)` | `POST /files/presign` | Reserve a `file_token` and a storage URL to PUT to |
 | `GetBalance(ctx)` | `GET /account/balance` | Account credit balance |
+| `GetUsage(ctx, opts)` | `GET /account/usage` | Credits consumed per task, newest first (`Limit` up to 200, `Offset`) |
 | `DownloadModel(ctx, task)` | — | Download the primary model URL into a `[]byte` |
+| `VerifyWebhook(payload, header, secret, opts)` | — | Verify and decode a webhook delivery |
 
 ---
 
@@ -212,6 +219,21 @@ tripo3d.TextToModelParams{
 ```
 
 Every `*Params` struct also has an `Extra map[string]interface{}` field for forward-compatible passthrough of fields the SDK doesn't model yet.
+
+### Large files and external models
+
+`UploadFile` sends the file through the API server. For files over 60 MB, use `UploadLargeFile`, which streams it straight to storage. Storage needs the exact size up front, so pass the size along with the reader. Then `ImportModel` turns an external model into a task that the post-processing endpoints accept:
+
+```go
+f, _ := os.Open("./character.fbx")
+defer f.Close()
+info, _ := f.Stat()
+uploaded, err := client.UploadLargeFile(ctx, f, info.Size(), "fbx")
+
+importID, err := client.ImportModel(ctx, tripo3d.ImportModelParams{Input: uploaded.FileToken})
+client.WaitForTask(ctx, importID, tripo3d.WaitOptions{})
+rigID, err := client.RigModel(ctx, tripo3d.RigModelParams{Input: importID})
+```
 
 ---
 
@@ -321,6 +343,30 @@ if err != nil {
 
 Reconcile against your task list before resubmitting; retrying blindly is
 what causes double charges.
+
+---
+
+## Webhooks
+
+Instead of polling, Tripo can POST `task.completed`, `task.failed` and `balance.low` events to an endpoint configured in the console. Verify each delivery against the endpoint's signing secret (`whsec_…`) before acting on it, and pass the body exactly as received:
+
+```go
+http.HandleFunc("/tripo", func(w http.ResponseWriter, r *http.Request) {
+	body, _ := io.ReadAll(r.Body)
+	event, err := tripo3d.VerifyWebhook(body, r.Header.Get(tripo3d.WebhookSignatureHeader), secret, tripo3d.WebhookOptions{})
+	if err != nil {
+		http.Error(w, "bad signature", http.StatusBadRequest)
+		return
+	}
+	if event.Type == tripo3d.WebhookTaskCompleted {
+		task, _ := event.Task()
+		log.Print(task.PrimaryModelURL())
+	}
+	w.WriteHeader(http.StatusOK)
+})
+```
+
+`VerifyWebhook` also rejects deliveries whose timestamp is more than 5 minutes from now, to stop replays. Failed deliveries are retried, so use `Tripo-Webhook-Delivery` (`WebhookDeliveryHeader`) to drop duplicates.
 
 ## Constants
 

@@ -3,6 +3,7 @@ package tripo3d
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -206,6 +207,90 @@ func (c *Client) SegmentMesh(ctx context.Context, params SegmentMeshParams) (str
 		return "", err
 	}
 	return c.createTask(ctx, "/mesh/segment", body)
+}
+
+// SmartSegmentParams are the parameters for POST /v3/mesh/smartsegment.
+//
+// Unlike SegmentMesh, which splits an existing Tripo model, SmartSegment
+// runs the whole pipeline: with SegTypeImage it first generates the model
+// from the image.
+type SmartSegmentParams struct {
+	// SegType is SegTypeImage or SegTypeModel.
+	SegType string `json:"seg_type"`
+
+	// Input is a file_token or URL: a PNG, JPEG or WebP image for
+	// SegTypeImage, or a GLB model for SegTypeModel.
+	Input string `json:"input"`
+
+	// Granularity is SmartSegmentCoarse, SmartSegmentMedium or
+	// SmartSegmentFine.
+	Granularity *string `json:"granularity,omitempty"`
+
+	// Hint names the parts to look for, e.g. "character with sword and
+	// armor".
+	Hint *string `json:"hint,omitempty"`
+
+	// Transform is the column-major 4×4 matrix (16 numbers) to apply to the
+	// input model. Required for SegTypeModel; see IdentityTransform.
+	Transform []float64 `json:"transform,omitempty"`
+
+	Extra map[string]interface{} `json:"-"`
+}
+
+// IdentityTransform returns the column-major 4×4 identity matrix, the
+// SmartSegmentParams.Transform for a model that needs no adjustment.
+func IdentityTransform() []float64 {
+	return []float64{1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1}
+}
+
+// SmartSegment calls POST /v3/mesh/smartsegment and returns the resulting
+// task_id. The finished task reports the segmented model in
+// TaskOutput.SegModelURL.
+func (c *Client) SmartSegment(ctx context.Context, params SmartSegmentParams) (string, error) {
+	switch params.SegType {
+	case SegTypeImage, SegTypeModel:
+	case "":
+		return "", errors.New("tripo3d: SmartSegment: SegType is required (SegTypeImage or SegTypeModel)")
+	default:
+		return "", fmt.Errorf("tripo3d: SmartSegment: unknown SegType %q", params.SegType)
+	}
+	if strings.TrimSpace(params.Input) == "" {
+		return "", errors.New("tripo3d: SmartSegment: Input is required")
+	}
+	if params.SegType == SegTypeModel && params.Transform == nil {
+		return "", errors.New("tripo3d: SmartSegment: Transform is required for SegTypeModel")
+	}
+	if params.Transform != nil && len(params.Transform) != 16 {
+		return "", fmt.Errorf("tripo3d: SmartSegment: Transform must hold 16 numbers, got %d", len(params.Transform))
+	}
+	body, err := buildPayload(params, params.Extra)
+	if err != nil {
+		return "", err
+	}
+	return c.createTask(ctx, "/mesh/smartsegment", body)
+}
+
+// ImportModelParams are the parameters for POST /v3/models/import.
+type ImportModelParams struct {
+	// Input is a file_token or URL of a GLB, GLTF, FBX, OBJ or STL file of
+	// at most 150 MB. Use Client.UploadLargeFile for files over 60 MB.
+	Input string `json:"input"`
+
+	Extra map[string]interface{} `json:"-"`
+}
+
+// ImportModel calls POST /v3/models/import and returns the resulting
+// task_id. The finished task can be passed as the Input of the
+// post-processing endpoints, such as TextureModel or ConvertModel.
+func (c *Client) ImportModel(ctx context.Context, params ImportModelParams) (string, error) {
+	if strings.TrimSpace(params.Input) == "" {
+		return "", errors.New("tripo3d: ImportModel: Input is required")
+	}
+	body, err := buildPayload(params, params.Extra)
+	if err != nil {
+		return "", err
+	}
+	return c.createTask(ctx, "/models/import", body)
 }
 
 // CompleteMeshParams are the parameters for POST /v3/mesh/complete.

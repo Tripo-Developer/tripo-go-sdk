@@ -218,6 +218,16 @@ type TaskOutput struct {
 	// UVRenderURL is the UV layout preview image produced by Client.MeshUV.
 	UVRenderURL string `json:"uv_render_url,omitempty"`
 
+	// SegModelURL, MaskURL, Prompt, SegTaskID and ModelTaskID are produced
+	// by Client.SmartSegment: the segmented model, the segmentation mask,
+	// the part list it detected, and the IDs of the segmentation and
+	// generation tasks it ran internally.
+	SegModelURL string `json:"seg_model_url,omitempty"`
+	MaskURL     string `json:"mask_url,omitempty"`
+	Prompt      string `json:"prompt,omitempty"`
+	SegTaskID   string `json:"seg_task_id,omitempty"`
+	ModelTaskID string `json:"model_task_id,omitempty"`
+
 	Riggable *bool  `json:"riggable,omitempty"`
 	RigType  string `json:"rig_type,omitempty"`
 
@@ -259,6 +269,9 @@ func (o *TaskOutput) PrimaryModelURL() string {
 	if len(o.ModelURLs) > 0 {
 		return o.ModelURLs[0]
 	}
+	if o.SegModelURL != "" {
+		return o.SegModelURL
+	}
 	return ""
 }
 
@@ -285,6 +298,29 @@ type Balance struct {
 // UploadedFile is the POST /v3/files response payload.
 type UploadedFile struct {
 	FileToken string `json:"file_token"`
+}
+
+// PresignedUpload is the POST /v3/files/presign response payload.
+type PresignedUpload struct {
+	// PresignedURL accepts a single HTTP PUT of the file body. It carries
+	// its own signature, so the request must not send an Authorization
+	// header.
+	PresignedURL string `json:"presigned_url"`
+	// FileToken refers to the uploaded file once the PUT has succeeded.
+	FileToken string `json:"file_token"`
+	// ExpiresIn is the lifetime of PresignedURL in seconds (1800).
+	ExpiresIn int `json:"expires_in"`
+}
+
+// UsageRecord is one entry of GET /v3/account/usage: the credits a single
+// task consumed.
+type UsageRecord struct {
+	TaskID          string     `json:"task_id"`
+	Type            string     `json:"type"`
+	Status          TaskStatus `json:"status"`
+	CreditsConsumed float64    `json:"credits_consumed"`
+	// CreatedAt is an ISO 8601 timestamp.
+	CreatedAt string `json:"created_at"`
 }
 
 // DownloadedModel is the result of Client.DownloadModel.

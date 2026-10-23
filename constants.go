@@ -180,6 +180,23 @@ const (
 	SegmentationDetailed = "detailed"
 )
 
+// SegType is the `seg_type` of POST /v3/mesh/smartsegment.
+const (
+	// SegTypeImage generates a model from a PNG, JPEG or WebP image and
+	// segments it.
+	SegTypeImage = "image"
+	// SegTypeModel segments an existing GLB model and requires a Transform.
+	SegTypeModel = "model"
+)
+
+// SmartSegmentGranularity is the `granularity` of POST /v3/mesh/smartsegment.
+// The server defaults to SmartSegmentMedium.
+const (
+	SmartSegmentCoarse = "coarse"
+	SmartSegmentMedium = "medium"
+	SmartSegmentFine   = "fine"
+)
+
 // CompletionMode is the `completion_mode` of POST /v3/mesh/complete.
 const (
 	// CompletionAI fills missing regions with generated geometry (default).
